@@ -20,13 +20,18 @@ export default async function handler(req, res) {
     const now = new Date();
     const y = now.getFullYear();
     const m = String(now.getMonth() + 1).padStart(2, '0');
-    const filePath = `data/trades-${y}-${m}.txt`;
+    const trade = body?.payload?.trade || null;
+    const idPart = trade?.id || Math.random().toString(36).slice(2);
+    const day = String(now.getDate()).padStart(2, '0');
+    const time = now.toISOString().replace(/[:.]/g, '-');
+    const dirPath = `data/trades/${y}/${m}`;
+    const filePath = `${dirPath}/${time}-${idPart}.json`;
 
-    const line = JSON.stringify({
+    const contentObject = {
       ts: now.toISOString(),
       event: body?.event || 'trade:add',
-      payload: body?.payload ?? null,
-    });
+      trade,
+    };
 
     const apiBase = 'https://api.github.com';
     const headers = {
@@ -35,31 +40,15 @@ export default async function handler(req, res) {
       Accept: 'application/vnd.github+json',
     };
 
-    let existingSha = null;
-    let existingContent = '';
-    const getResp = await fetch(`${apiBase}/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath)}?ref=${encodeURIComponent(branch)}`, {
-      method: 'GET',
-      headers,
-    });
-    if (getResp.ok) {
-      const json = await getResp.json();
-      existingSha = json.sha || null;
-      if (json.content && json.encoding === 'base64') {
-        existingContent = Buffer.from(json.content, 'base64').toString('utf8');
-      }
-    }
-
-    const newContent = existingContent ? `${existingContent}\n${line}` : line;
-    const b64 = Buffer.from(newContent, 'utf8').toString('base64');
+    const b64 = Buffer.from(JSON.stringify(contentObject, null, 2), 'utf8').toString('base64');
 
     const putResp = await fetch(`${apiBase}/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath)}`, {
       method: 'PUT',
       headers,
       body: JSON.stringify({
-        message: `chore(journal): append trade event to ${filePath}`,
+        message: `chore(journal): create ${filePath}`,
         content: b64,
         branch,
-        sha: existingSha || undefined,
       }),
     });
 
