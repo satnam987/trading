@@ -144,6 +144,7 @@
       <button id="btnExportJson" class="btn btn-secondary me-2">Export JSON</button>
       <button id="btnExportCsv" class="btn btn-secondary me-2">Export CSV</button>
       <button id="btnViewOpslag" class="btn btn-outline-primary">View opslag.json</button>
+      <button id="btnSyncOpslag" class="btn btn-outline-success ms-2">Sync opslag.json</button>
     </div>
   </div>
 
@@ -301,9 +302,13 @@
     document.getElementById('btnViewOpslag').addEventListener('click', async () => {
       try {
         const resp = await fetch('/api/read-opslag');
-        if (!resp.ok) throw new Error('Failed');
-        const data = await resp.json();
-        const raw = data?.raw || JSON.stringify({ trades: data?.trades || [] }, null, 2);
+        let raw = '';
+        if (resp.ok) {
+          const data = await resp.json();
+          raw = data?.raw || JSON.stringify({ trades: data?.trades || [] }, null, 2);
+        } else {
+          throw new Error('api failed');
+        }
         const w = window.open('', '_blank');
         if (w) {
           w.document.write('<pre style="white-space:pre-wrap;word-wrap:break-word;padding:16px">' + raw.replace(/</g, '&lt;') + '</pre>');
@@ -312,7 +317,34 @@
           alert(raw.slice(0, 2000));
         }
       } catch (e) {
-        alert('Kon opslag.json niet laden');
+        // Fallback: try GitHub raw (public) if tokenless
+        try {
+          const owner = 'satnam987';
+          const repo = 'trading';
+          const branch = 'main';
+          const url = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/data/opslag.json`;
+          const r = await fetch(url);
+          if (!r.ok) throw new Error('raw 404');
+          const raw = await r.text();
+          const w = window.open('', '_blank');
+          if (w) { w.document.write('<pre style="white-space:pre-wrap;word-wrap:break-word;padding:16px">' + raw.replace(/</g, '&lt;') + '</pre>'); w.document.close(); }
+          else { alert(raw.slice(0, 2000)); }
+        } catch (_) {
+          alert('Kon opslag.json niet laden');
+        }
+      }
+    });
+
+    document.getElementById('btnSyncOpslag').addEventListener('click', async () => {
+      try {
+        await fetch('/api/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: 'trades:sync', payload: { trades } })
+        });
+        alert('Sync verzonden');
+      } catch (_) {
+        alert('Sync mislukt');
       }
     });
 

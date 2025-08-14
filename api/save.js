@@ -24,7 +24,8 @@ export default async function handler(req, res) {
     const y = now.getFullYear();
     const m = String(now.getMonth() + 1).padStart(2, '0');
     const trade = body?.payload?.trade || null;
-    if (!trade || typeof trade !== 'object') {
+    const tradesBulk = Array.isArray(body?.payload?.trades) ? body.payload.trades : null;
+    if ((!trade || typeof trade !== 'object') && !tradesBulk) {
       res.status(400).json({ ok: false, error: 'Missing trade payload' });
       return;
     }
@@ -53,8 +54,14 @@ export default async function handler(req, res) {
       }
     }
 
-    // Append new trade record
-    existingTrades.push({ ts: now.toISOString(), ...trade });
+    // Append new trade record(s)
+    if (tradesBulk) {
+      for (const t of tradesBulk) {
+        if (t && typeof t === 'object') existingTrades.push({ ts: now.toISOString(), ...t });
+      }
+    } else {
+      existingTrades.push({ ts: now.toISOString(), ...trade });
+    }
 
     const contentStr = JSON.stringify({ version: 1, updatedAt: now.toISOString(), trades: existingTrades }, null, 2);
     const b64 = Buffer.from(contentStr, 'utf8').toString('base64');
