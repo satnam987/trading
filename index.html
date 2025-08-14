@@ -178,7 +178,9 @@
     // Send event to serverless function to append into monthly txt on GitHub
     async function sendEvent(eventName, payload) {
       try {
-        await fetch('/api/save', {
+        const isLocalStatic = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
+        const apiBase = isLocalStatic ? 'https://trading-three-pink.vercel.app' : '';
+        await fetch(apiBase + '/api/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ event: eventName, payload })
@@ -301,7 +303,9 @@
 
     document.getElementById('btnViewOpslag').addEventListener('click', async () => {
       try {
-        const resp = await fetch('/api/read-opslag');
+        const isLocalStatic = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
+        const apiBase = isLocalStatic ? 'https://trading-three-pink.vercel.app' : '';
+        const resp = await fetch(apiBase + '/api/read-opslag');
         let raw = '';
         if (resp.ok) {
           const data = await resp.json();
@@ -319,10 +323,7 @@
       } catch (e) {
         // Fallback: try GitHub raw (public) if tokenless
         try {
-          const owner = 'satnam987';
-          const repo = 'trading';
-          const branch = 'main';
-          const url = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/data/opslag.json`;
+          const url = `https://raw.githubusercontent.com/satnam987/trading/main/data/opslag.json`;
           const r = await fetch(url);
           if (!r.ok) throw new Error('raw 404');
           const raw = await r.text();
