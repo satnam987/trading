@@ -340,6 +340,20 @@
     const EXPORT_FILENAME_JSON = 'winrate-backup.json';
     const EXPORT_FILENAME_CSV = 'winrate-trades.csv';
 
+    // Event logger to serverless function
+    function sendEvent(eventName, payload) {
+      try {
+        const data = { event: eventName, payload };
+        const url = '/api/save';
+        if (navigator.sendBeacon) {
+          const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+          navigator.sendBeacon(url, blob);
+        } else {
+          fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+        }
+      } catch (_) {}
+    }
+
     function createId() {
       return Math.random().toString(36).slice(2) + Date.now().toString(36);
     }
@@ -422,7 +436,9 @@
       const safeDate = date && !Number.isNaN(new Date(date).getTime()) ? date : toISODateOnly();
       const safePair = AVAILABLE_PAIRS.includes(pair) ? pair : AVAILABLE_PAIRS[0];
       const safeSide = side === 'sell' ? 'sell' : 'buy';
-      trades.push({ id, strategyId, date: safeDate, pair: safePair, side: safeSide, result });
+      const trade = { id, strategyId, date: safeDate, pair: safePair, side: safeSide, result };
+      trades.push(trade);
+      return trade;
     }
 
     function removeTradesForStrategy(strategyId) {
@@ -557,6 +573,7 @@
             }
           }
           commit();
+          sendEvent('import:file', { strategies: state.length, trades: trades.length });
           alert('Import succesvol.');
         } catch (err) {
           alert('Kon bestand niet importeren. Controleer het JSON-formaat.');
@@ -616,8 +633,10 @@
     }
 
     function addStrategy(name) {
-      state.push({ id: createId(), name, wins: 0, losses: 0 });
+      const id = createId();
+      state.push({ id, name, wins: 0, losses: 0 });
       commit();
+      sendEvent('strategy:add', { id, name });
     }
 
     function updateStrategy(id, updates) {
@@ -625,6 +644,7 @@
       if (idx === -1) return;
       state[idx] = { ...state[idx], ...updates };
       commit();
+      sendEvent('strategy:update', { id, updates });
     }
 
     function removeStrategy(id) {
@@ -632,6 +652,7 @@
       if (idx === -1) return;
       state.splice(idx, 1);
       commit();
+      sendEvent('strategy:remove', { id });
     }
 
     document.getElementById('addForm').addEventListener('submit', (e) => {
@@ -661,11 +682,13 @@
       const selectedDate = dateInput?.value || toISODateOnly();
 
       if (action === 'inc-win') {
-        addTrade({ strategyId: id, pair: selectedPair, side: selectedSide, date: selectedDate, result: 'win' });
+        const t = addTrade({ strategyId: id, pair: selectedPair, side: selectedSide, date: selectedDate, result: 'win' });
         updateStrategy(id, { wins: strategy.wins + 1 });
+        sendEvent('trade:add', { trade: t });
       } else if (action === 'inc-loss') {
-        addTrade({ strategyId: id, pair: selectedPair, side: selectedSide, date: selectedDate, result: 'loss' });
+        const t = addTrade({ strategyId: id, pair: selectedPair, side: selectedSide, date: selectedDate, result: 'loss' });
         updateStrategy(id, { losses: strategy.losses + 1 });
+        sendEvent('trade:add', { trade: t });
       } else if (action === 'remove') {
         removeTradesForStrategy(id);
         removeStrategy(id);
@@ -956,6 +979,7 @@
           }
         }
         commit();
+        sendEvent('import:text', { strategies: state.length, trades: trades.length });
         importPane.classList.remove('open');
         importText.value = '';
         alert('Import succesvol.');
@@ -995,6 +1019,7 @@
       const tradeId = row?.getAttribute('data-trade-id');
       if (!tradeId) return;
       removeSingleTrade(tradeId);
+      sendEvent('trade:remove', { id: tradeId });
     });
   </script>
 </body>
