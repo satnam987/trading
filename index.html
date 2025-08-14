@@ -142,7 +142,8 @@
 
     <div class="text-center">
       <button id="btnExportJson" class="btn btn-secondary me-2">Export JSON</button>
-      <button id="btnExportCsv" class="btn btn-secondary">Export CSV</button>
+      <button id="btnExportCsv" class="btn btn-secondary me-2">Export CSV</button>
+      <button id="btnOpenFiles" class="btn btn-outline-primary">Open Saved Files</button>
     </div>
   </div>
 
@@ -293,6 +294,23 @@
       const header = 'Date,Pair,Direction,Size,P&L,Strategy,Notes\n';
       const rows = trades.map(t => `${t.date},${t.pair},${t.direction},${t.size ?? 0},${t.pnl ?? 0},${t.strategy ?? ''},${(t.notes ?? '').replace(/\n/g, ' ')}`).join('\n');
       downloadBlob(header + rows, 'trading-journal.csv', 'text/csv');
+    });
+
+    document.getElementById('btnOpenFiles').addEventListener('click', async () => {
+      try {
+        const resp = await fetch('/api/list');
+        if (!resp.ok) throw new Error('Failed to list files');
+        const data = await resp.json();
+        const items = Array.isArray(data.items) ? data.items : [];
+        if (items.length === 0) {
+          alert('No saved files found yet.');
+          return;
+        }
+        // Open the newest file in a new tab; or show a simple chooser
+        window.open(items[0].url, '_blank');
+      } catch (e) {
+        alert('Could not open saved files.');
+      }
     });
 
     function downloadBlob(content, filename, type) {
