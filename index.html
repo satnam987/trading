@@ -7,19 +7,57 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
   <style>
     body { background-color: #f8f9fa; }
-    .card { border-radius: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-    .table { border-radius: 10px; overflow: hidden; }
-    .positive { color: green; }
-    .negative { color: red; }
-    .chart-container { height: 400px; }
+    .card { border-radius: 16px; box-shadow: 0 6px 16px rgba(10, 22, 50, .06); }
+    .stat-card { border: none; }
+    .stat-value { font-size: 1.6rem; font-weight: 700; }
+    .positive { color: #16a34a; }
+    .negative { color: #dc2626; }
+    .chart-container { height: 380px; }
+    .table { border-radius: 12px; overflow: hidden; }
   </style>
 </head>
 <body>
   <div class="container my-5">
     <header class="text-center mb-4">
-      <h1 class="display-4">Trading Journal</h1>
-      <p class="lead">Track your trades professionally</p>
+      <h1 class="display-5 fw-bold">Trading Journal</h1>
+      <p class="text-muted mb-0">Log trades, track performance, and view your P&L trend</p>
     </header>
+
+    <div class="row g-3 mb-4">
+      <div class="col-12 col-md-4">
+        <div class="card stat-card">
+          <div class="card-body d-flex justify-content-between align-items-center">
+            <div>
+              <div class="text-muted">Total Trades</div>
+              <div id="statTrades" class="stat-value">0</div>
+            </div>
+            <span class="badge text-bg-primary">All time</span>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-4">
+        <div class="card stat-card">
+          <div class="card-body d-flex justify-content-between align-items-center">
+            <div>
+              <div class="text-muted">Winrate</div>
+              <div id="statWinrate" class="stat-value">-</div>
+            </div>
+            <span class="badge text-bg-success">% wins</span>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-4">
+        <div class="card stat-card">
+          <div class="card-body d-flex justify-content-between align-items-center">
+            <div>
+              <div class="text-muted">Total P&L</div>
+              <div id="statTotalPnL" class="stat-value">0.00</div>
+            </div>
+            <span class="badge text-bg-secondary">Sum</span>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div class="card mb-4">
       <div class="card-body">
@@ -45,13 +83,10 @@
               </select>
             </div>
             <div class="col-md-3">
-              <input type="number" class="form-control" id="entryPrice" placeholder="Entry Price" step="0.01" required>
+              <input type="number" class="form-control" id="tradeSize" placeholder="Size" step="0.01">
             </div>
             <div class="col-md-3">
-              <input type="number" class="form-control" id="exitPrice" placeholder="Exit Price" step="0.01" required>
-            </div>
-            <div class="col-md-3">
-              <input type="number" class="form-control" id="tradeSize" placeholder="Size" step="0.01" required>
+              <input type="number" class="form-control" id="tradePnL" placeholder="P&L" step="0.01" required>
             </div>
             <div class="col-md-3">
               <input type="text" class="form-control" id="tradeStrategy" placeholder="Strategy (optional)">
@@ -70,14 +105,12 @@
     <div class="card mb-4">
       <div class="card-body">
         <h5 class="card-title">Trade Journal</h5>
-        <table class="table table-striped table-hover">
+        <table class="table table-striped table-hover align-middle">
           <thead class="table-dark">
             <tr>
               <th>Date</th>
               <th>Pair</th>
               <th>Direction</th>
-              <th>Entry</th>
-              <th>Exit</th>
               <th>Size</th>
               <th>P&L</th>
               <th>Strategy</th>
@@ -88,7 +121,8 @@
           <tbody id="tradesTbody"></tbody>
           <tfoot>
             <tr class="fw-bold">
-              <td colspan="6">Total P&L</td>
+              <td colspan="3">Totals</td>
+              <td id="totalSize">0.00</td>
               <td id="totalPnL">0.00</td>
               <td colspan="3"></td>
             </tr>
@@ -118,41 +152,31 @@
     const STORAGE_KEY = 'trading:journal.v1';
     const AVAILABLE_PAIRS = ['EURUSD', 'TECH100', 'BTCUSD'];
 
-    function createId() {
-      return Math.random().toString(36).slice(2) + Date.now().toString(36);
-    }
+    let chartRef = null;
 
-    function toISODateOnly(d = new Date()) {
-      return d.toISOString().split('T')[0];
-    }
+    function createId() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+    function toISODateOnly(d = new Date()) { return d.toISOString().split('T')[0]; }
 
     function loadState() {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed.trades)) {
-            trades.push(...parsed.trades);
-          }
+          if (Array.isArray(parsed.trades)) trades.push(...parsed.trades);
         }
       } catch (_) {}
+      // default date
+      const dateEl = document.getElementById('tradeDate');
+      if (dateEl && !dateEl.value) dateEl.value = toISODateOnly();
       render();
     }
 
-    function saveState() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ trades }));
-    }
+    function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify({ trades })); }
 
-    function calculatePnL(trade) {
-      const diff = trade.direction === 'buy' ? (trade.exit - trade.entry) : (trade.entry - trade.exit);
-      return diff * trade.size;
-    }
+    function calculatePnL(trade) { return Number(trade.pnl) || 0; }
 
     function addTrade(tradeData) {
-      trades.push({
-        id: createId(),
-        ...tradeData
-      });
+      trades.push({ id: createId(), ...tradeData });
       saveState();
       render();
     }
@@ -166,81 +190,77 @@
 
     function render() {
       const tbody = document.getElementById('tradesTbody');
-      let totalPnL = 0;
       tbody.innerHTML = '';
+
+      let totalPnL = 0;
+      let totalSize = 0;
+      let wins = 0;
+
       trades
         .sort((a, b) => new Date(a.date) - new Date(b.date))
         .forEach(t => {
           const pnl = calculatePnL(t);
           totalPnL += pnl;
-          const row = document.createElement('tr');
-          row.dataset.id = t.id;
-          row.innerHTML = `
+          totalSize += Number(t.size) || 0;
+          if (pnl > 0) wins += 1;
+
+          const tr = document.createElement('tr');
+          tr.dataset.id = t.id;
+          tr.innerHTML = `
             <td>${t.date}</td>
             <td>${t.pair}</td>
             <td>${t.direction}</td>
-            <td>${t.entry.toFixed(2)}</td>
-            <td>${t.exit.toFixed(2)}</td>
-            <td>${t.size.toFixed(2)}</td>
+            <td>${(Number(t.size) || 0).toFixed(2)}</td>
             <td class="${pnl >= 0 ? 'positive' : 'negative'}">${pnl.toFixed(2)}</td>
             <td>${t.strategy || ''}</td>
             <td>${t.notes || ''}</td>
-            <td><button class="btn btn-sm btn-danger remove-btn">Delete</button></td>
+            <td><button class="btn btn-sm btn-outline-danger remove-btn">Delete</button></td>
           `;
-          tbody.appendChild(row);
+          tbody.appendChild(tr);
         });
+
+      const total = trades.length;
+      const winrate = total ? ((wins / total) * 100).toFixed(1) + '%' : '-';
 
       document.getElementById('totalPnL').textContent = totalPnL.toFixed(2);
       document.getElementById('totalPnL').className = totalPnL >= 0 ? 'positive' : 'negative';
+      document.getElementById('totalSize').textContent = totalSize.toFixed(2);
+
+      document.getElementById('statTrades').textContent = String(total);
+      document.getElementById('statWinrate').textContent = winrate;
+      document.getElementById('statTotalPnL').textContent = totalPnL.toFixed(2);
+      document.getElementById('statTotalPnL').className = 'stat-value ' + (totalPnL >= 0 ? 'positive' : 'negative');
 
       renderChart();
     }
 
     function renderChart() {
       const ctx = document.getElementById('trendChart').getContext('2d');
-      const sortedTrades = [...trades].sort((a, b) => new Date(a.date) - new Date(b.date));
+      const sorted = [...trades].sort((a, b) => new Date(a.date) - new Date(b.date));
       let cumulative = 0;
-      const labels = sortedTrades.map(t => t.date);
-      const data = sortedTrades.map(t => {
-        cumulative += calculatePnL(t);
-        return cumulative;
-      });
+      const labels = sorted.map(t => t.date);
+      const data = sorted.map(t => { cumulative += calculatePnL(t); return cumulative; });
 
-      new Chart(ctx, {
+      if (chartRef) chartRef.destroy();
+      chartRef = new Chart(ctx, {
         type: 'line',
-        data: {
-          labels,
-          datasets: [{
-            label: 'Cumulative P&L',
-            data,
-            borderColor: 'rgb(75, 192, 192)',
-            tension: 0.1
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            y: { beginAtZero: true }
-          }
-        }
+        data: { labels, datasets: [{ label: 'Cumulative P&L', data, borderColor: '#0d6efd', backgroundColor: 'rgba(13,110,253,.08)', fill: true, tension: .25 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
       });
     }
 
     document.getElementById('addTradeForm').addEventListener('submit', e => {
       e.preventDefault();
-      const formData = new FormData(e.target);
-      addTrade({
-        date: formData.get('tradeDate'),
-        pair: formData.get('tradePair'),
-        direction: formData.get('tradeDirection'),
-        entry: parseFloat(formData.get('entryPrice')),
-        exit: parseFloat(formData.get('exitPrice')),
-        size: parseFloat(formData.get('tradeSize')),
-        strategy: formData.get('tradeStrategy'),
-        notes: formData.get('tradeNotes')
-      });
+      const date = document.getElementById('tradeDate').value;
+      const pair = document.getElementById('tradePair').value;
+      const direction = document.getElementById('tradeDirection').value;
+      const size = parseFloat(document.getElementById('tradeSize').value) || 0;
+      const pnl = parseFloat(document.getElementById('tradePnL').value) || 0;
+      const strategy = document.getElementById('tradeStrategy').value;
+      const notes = document.getElementById('tradeNotes').value;
+      addTrade({ date, pair, direction, size, pnl, strategy, notes });
       e.target.reset();
+      document.getElementById('tradeDate').value = toISODateOnly();
     });
 
     document.getElementById('tradesTbody').addEventListener('click', e => {
@@ -256,8 +276,8 @@
     });
 
     document.getElementById('btnExportCsv').addEventListener('click', () => {
-      const header = 'Date,Pair,Direction,Entry,Exit,Size,P&L,Strategy,Notes\n';
-      const rows = trades.map(t => `${t.date},${t.pair},${t.direction},${t.entry},${t.exit},${t.size},${calculatePnL(t)},${t.strategy},${t.notes}`).join('\n');
+      const header = 'Date,Pair,Direction,Size,P&L,Strategy,Notes\n';
+      const rows = trades.map(t => `${t.date},${t.pair},${t.direction},${t.size ?? 0},${t.pnl ?? 0},${t.strategy ?? ''},${(t.notes ?? '').replace(/\n/g, ' ')}`).join('\n');
       downloadBlob(header + rows, 'trading-journal.csv', 'text/csv');
     });
 
@@ -265,9 +285,7 @@
       const blob = new Blob([content], { type });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
+      a.href = url; a.download = filename; a.click();
       URL.revokeObjectURL(url);
     }
 
