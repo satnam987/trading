@@ -173,12 +173,26 @@
 
     function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify({ trades })); }
 
+    // Send event to serverless function to append into monthly txt on GitHub
+    async function sendEvent(eventName, payload) {
+      try {
+        await fetch('/api/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: eventName, payload })
+        });
+      } catch (_) { /* ignore network errors */ }
+    }
+
     function calculatePnL(trade) { return Number(trade.pnl) || 0; }
 
     function addTrade(tradeData) {
-      trades.push({ id: createId(), ...tradeData });
+      const trade = { id: createId(), ...tradeData };
+      trades.push(trade);
       saveState();
       render();
+      // Persist externally per new trade
+      sendEvent('trade:add', { trade });
     }
 
     function removeTrade(id) {
