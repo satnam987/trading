@@ -305,7 +305,7 @@
       try {
         const isLocalStatic = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
         const apiBase = isLocalStatic ? 'https://trading-three-pink.vercel.app' : '';
-        const resp = await fetch(apiBase + '/api/read-opslag');
+        const resp = await fetch(apiBase + '/api/read-opslag', { mode: 'cors' });
         let raw = '';
         if (resp.ok) {
           const data = await resp.json();
