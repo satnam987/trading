@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "trading-winrate",
+  "public": true,
+  "cleanUrls": true,
+  "redirects": [
+    { "source": "/strategie.html", "destination": "/", "permanent": true }
+  ]
+}
+
