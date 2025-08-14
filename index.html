@@ -2,7 +2,7 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8" />
-  <title>Winrate Calculator per Strategie</title>
+  <title>Trading Journal</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root {
@@ -251,12 +251,23 @@
 </head>
 <body>
   <div class="card">
-    <h1>Winrate Calculator per Strategie</h1>
+    <h1>Trading Journal</h1>
 
-    <form id="addForm" autocomplete="off">
-      <input id="strategyName" type="text" placeholder="Strategienaam" required />
-      <button type="submit" class="primary">Strategie toevoegen</button>
-      <span class="muted">Voeg een strategie toe en vul wins/losses in of gebruik de + knoppen.</span>
+    <form id="addTradeForm" autocomplete="off">
+      <input type="date" id="tradeDate" value="${toISODateOnly()}" required />
+      <select id="tradePair">
+        ${AVAILABLE_PAIRS.map(p => `<option value="${p}">${p}</option>`).join('')}
+      </select>
+      <select id="tradeDirection">
+        <option value="buy">Buy</option>
+        <option value="sell">Sell</option>
+      </select>
+      <input type="number" id="entryPrice" placeholder="Entry Price" step="0.01" required />
+      <input type="number" id="exitPrice" placeholder="Exit Price" step="0.01" required />
+      <input type="number" id="tradeSize" placeholder="Size" step="0.01" required />
+      <input type="text" id="tradeStrategy" placeholder="Strategy (optional)" />
+      <textarea id="tradeNotes" placeholder="Notes"></textarea>
+      <button type="submit" class="primary">Add Trade</button>
     </form>
 
     <div class="toolbar" role="group" aria-label="Export / Import">
@@ -310,19 +321,29 @@
 
     <div class="section-title">Trades</div>
     <div class="table-wrap" role="region" aria-label="Trade log" tabindex="0">
-      <table aria-label="Trade log">
+      <table aria-label="Trade Journal">
         <thead>
           <tr>
-            <th>Datum</th>
-            <th>Dag</th>
+            <th>Date</th>
             <th>Pair</th>
-            <th>Richting</th>
-            <th>Strategie</th>
-            <th class="num">Resultaat</th>
-            <th>Acties</th>
+            <th>Direction</th>
+            <th>Entry</th>
+            <th>Exit</th>
+            <th>Size</th>
+            <th>P&L</th>
+            <th>Strategy</th>
+            <th>Notes</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody id="tradesTbody"></tbody>
+        <tfoot>
+          <tr>
+            <td colspan="6">Totals</td>
+            <td id="totalPnL">0</td>
+            <td colspan="3"></td>
+          </tr>
+        </tfoot>
       </table>
     </div>
 
@@ -333,26 +354,11 @@
   </div>
 
   <script>
-    const state = [];
     const trades = [];
-    const STORAGE_KEY = 'winrate:strategies.v1';
+    const STORAGE_KEY = 'trading:journal.v1';
     const AVAILABLE_PAIRS = ['EURUSD', 'TECH100', 'BTCUSD'];
     const EXPORT_FILENAME_JSON = 'winrate-backup.json';
     const EXPORT_FILENAME_CSV = 'winrate-trades.csv';
-
-    // Event logger to serverless function
-    function sendEvent(eventName, payload) {
-      try {
-        const data = { event: eventName, payload };
-        const url = '/api/save';
-        if (navigator.sendBeacon) {
-          const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-          navigator.sendBeacon(url, blob);
-        } else {
-          fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-        }
-      } catch (_) {}
-    }
 
     function createId() {
       return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -379,51 +385,33 @@
 
     function saveState() {
       try {
-        const payload = { version: 2, strategies: state, trades, pairs: AVAILABLE_PAIRS };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ trades }));
       } catch (_) {
         // ignore storage errors (quota/unsupported)
       }
     }
 
     function loadState() {
+      // Update to load trades with new fields
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return;
         const parsed = JSON.parse(raw);
-        state.length = 0;
         trades.length = 0;
-        if (Array.isArray(parsed)) {
-          // v1 compat: array van strategies
-          for (const item of parsed) {
-            const id = typeof item?.id === 'string' ? item.id : createId();
-            const name = typeof item?.name === 'string' ? item.name : 'Onbekend';
-            const wins = Math.max(0, Number.isFinite(+item?.wins) ? +item.wins : 0);
-            const losses = Math.max(0, Number.isFinite(+item?.losses) ? +item.losses : 0);
-            state.push({ id, name, wins, losses });
-          }
-        } else if (parsed && typeof parsed === 'object') {
-          const strategies = Array.isArray(parsed.strategies) ? parsed.strategies : [];
-          const savedTrades = Array.isArray(parsed.trades) ? parsed.trades : [];
-          for (const item of strategies) {
-            const id = typeof item?.id === 'string' ? item.id : createId();
-            const name = typeof item?.name === 'string' ? item.name : 'Onbekend';
-            const wins = Math.max(0, Number.isFinite(+item?.wins) ? +item.wins : 0);
-            const losses = Math.max(0, Number.isFinite(+item?.losses) ? +item.losses : 0);
-            state.push({ id, name, wins, losses });
-          }
-          for (const t of savedTrades) {
-            const id = typeof t?.id === 'string' ? t.id : createId();
-            const strategyId = typeof t?.strategyId === 'string' ? t.strategyId : '';
-            const date = typeof t?.date === 'string' ? t.date : toISODateOnly();
-            const pair = typeof t?.pair === 'string' ? t.pair : 'EURUSD';
-            const result = t?.result === 'win' ? 'win' : 'loss';
-            trades.push({ id, strategyId, date, pair, result });
-          }
+        if (Array.isArray(parsed.trades)) {
+          trades.push(...parsed.trades.map(t => ({
+            id: t.id || createId(),
+            date: t.date,
+            pair: t.pair,
+            direction: t.direction || 'buy',
+            entry: parseFloat(t.entry) || 0,
+            exit: parseFloat(t.exit) || 0,
+            size: parseFloat(t.size) || 0,
+            strategy: t.strategy || '',
+            notes: t.notes || '',
+          })));
         }
-      } catch (_) {
-        // ignore parse/storage errors
-      }
+      } catch (_) {}
     }
 
     function commit() {
@@ -431,60 +419,53 @@
       render();
     }
 
-    function addTrade({ strategyId, date, pair, side, result }) {
-      const id = createId();
-      const safeDate = date && !Number.isNaN(new Date(date).getTime()) ? date : toISODateOnly();
-      const safePair = AVAILABLE_PAIRS.includes(pair) ? pair : AVAILABLE_PAIRS[0];
-      const safeSide = side === 'sell' ? 'sell' : 'buy';
-      const trade = { id, strategyId, date: safeDate, pair: safePair, side: safeSide, result };
+    function calculatePnL(trade) {
+      const diff = trade.direction === 'buy' ? (trade.exit - trade.entry) : (trade.entry - trade.exit);
+      return diff * trade.size;
+    }
+
+    function addTrade(tradeData) {
+      const trade = {
+        id: createId(),
+        ...tradeData,
+      };
       trades.push(trade);
-      return trade;
-    }
-
-    function removeTradesForStrategy(strategyId) {
-      for (let i = trades.length - 1; i >= 0; i -= 1) {
-        if (trades[i].strategyId === strategyId) trades.splice(i, 1);
-      }
-    }
-
-    function removeSingleTrade(tradeId) {
-      const idx = trades.findIndex(t => t.id === tradeId);
-      if (idx === -1) return;
-      const t = trades[idx];
-      trades.splice(idx, 1);
-      const stratIdx = state.findIndex(s => s.id === t.strategyId);
-      if (stratIdx !== -1) {
-        const s = state[stratIdx];
-        if (t.result === 'win' && s.wins > 0) s.wins -= 1;
-        if (t.result === 'loss' && s.losses > 0) s.losses -= 1;
-      }
       commit();
     }
 
-    function renderTrades() {
+    function removeTrade(id) {
+      const idx = trades.findIndex(t => t.id === id);
+      if (idx !== -1) trades.splice(idx, 1);
+      commit();
+    }
+
+    function render() {
       const tbody = document.getElementById('tradesTbody');
-      if (!tbody) return;
-      const rows = trades
+      let totalPnL = 0;
+      tbody.innerHTML = trades
         .slice()
-        .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-        .slice(0, 100)
+        .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
         .map(t => {
-          const strat = state.find(s => s.id === t.strategyId);
-          const stratName = strat ? strat.name : '(verwijderd)';
+          const pnl = calculatePnL(t);
+          totalPnL += pnl;
           return `
-            <tr data-trade-id="${t.id}">
+            <tr data-id="${t.id}">
               <td>${t.date}</td>
-              <td>${dayName(t.date)}</td>
               <td>${t.pair}</td>
-              <td>${t.side === 'sell' ? 'Sell' : 'Buy'}</td>
-              <td>${stratName}</td>
-              <td class="num">${t.result === 'win' ? 'Win' : 'Loss'}</td>
-              <td><button class="small danger" data-action="remove-trade">Verwijder</button></td>
+              <td>${t.direction}</td>
+              <td>${t.entry.toFixed(2)}</td>
+              <td>${t.exit.toFixed(2)}</td>
+              <td>${t.size.toFixed(2)}</td>
+              <td class="${pnl > 0 ? 'success' : 'danger'}">${pnl.toFixed(2)}</td>
+              <td>${t.strategy}</td>
+              <td>${t.notes}</td>
+              <td><button class="small danger" data-action="remove">Delete</button></td>
             </tr>
           `;
         }).join('');
-      tbody.innerHTML = rows || '<tr><td colspan="7" class="muted">Nog geen trades</td></tr>';
-      renderTrendChart();
+
+      document.getElementById('totalPnL').textContent = totalPnL.toFixed(2);
+      renderTrendChart(); // Update chart to use P&L cumulative
     }
 
     function downloadBlob(content, filename, type = 'application/octet-stream') {
@@ -503,7 +484,6 @@
       const payload = {
         version: 2,
         exportedAt: new Date().toISOString(),
-        strategies: state,
         trades,
         pairs: AVAILABLE_PAIRS,
       };
@@ -573,7 +553,6 @@
             }
           }
           commit();
-          sendEvent('import:file', { strategies: state.length, trades: trades.length });
           alert('Import succesvol.');
         } catch (err) {
           alert('Kon bestand niet importeren. Controleer het JSON-formaat.');
@@ -633,10 +612,8 @@
     }
 
     function addStrategy(name) {
-      const id = createId();
-      state.push({ id, name, wins: 0, losses: 0 });
+      state.push({ id: createId(), name, wins: 0, losses: 0 });
       commit();
-      sendEvent('strategy:add', { id, name });
     }
 
     function updateStrategy(id, updates) {
@@ -644,7 +621,6 @@
       if (idx === -1) return;
       state[idx] = { ...state[idx], ...updates };
       commit();
-      sendEvent('strategy:update', { id, updates });
     }
 
     function removeStrategy(id) {
@@ -652,7 +628,6 @@
       if (idx === -1) return;
       state.splice(idx, 1);
       commit();
-      sendEvent('strategy:remove', { id });
     }
 
     document.getElementById('addForm').addEventListener('submit', (e) => {
@@ -682,13 +657,11 @@
       const selectedDate = dateInput?.value || toISODateOnly();
 
       if (action === 'inc-win') {
-        const t = addTrade({ strategyId: id, pair: selectedPair, side: selectedSide, date: selectedDate, result: 'win' });
+        addTrade({ strategyId: id, pair: selectedPair, side: selectedSide, date: selectedDate, result: 'win' });
         updateStrategy(id, { wins: strategy.wins + 1 });
-        sendEvent('trade:add', { trade: t });
       } else if (action === 'inc-loss') {
-        const t = addTrade({ strategyId: id, pair: selectedPair, side: selectedSide, date: selectedDate, result: 'loss' });
+        addTrade({ strategyId: id, pair: selectedPair, side: selectedSide, date: selectedDate, result: 'loss' });
         updateStrategy(id, { losses: strategy.losses + 1 });
-        sendEvent('trade:add', { trade: t });
       } else if (action === 'remove') {
         removeTradesForStrategy(id);
         removeStrategy(id);
@@ -979,7 +952,6 @@
           }
         }
         commit();
-        sendEvent('import:text', { strategies: state.length, trades: trades.length });
         importPane.classList.remove('open');
         importText.value = '';
         alert('Import succesvol.');
@@ -1019,7 +991,6 @@
       const tradeId = row?.getAttribute('data-trade-id');
       if (!tradeId) return;
       removeSingleTrade(tradeId);
-      sendEvent('trade:remove', { id: tradeId });
     });
   </script>
 </body>
