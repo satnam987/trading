@@ -3,11 +3,6 @@
   "name": "trading-winrate",
   "public": true,
   "cleanUrls": true,
-  "functions": {
-    "api/*.js": {
-      "runtime": "nodejs20.x"
-    }
-  },
   "redirects": [
     { "source": "/strategie.html", "destination": "/", "permanent": true }
   ]
