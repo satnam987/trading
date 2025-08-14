@@ -144,6 +144,7 @@
       <button id="btnExportJson" class="btn btn-secondary me-2">Export JSON</button>
       <button id="btnExportCsv" class="btn btn-secondary me-2">Export CSV</button>
       <button id="btnOpenFiles" class="btn btn-outline-primary">Open Saved Files</button>
+      <button id="btnReadLatest" class="btn btn-outline-secondary ms-2">Read Latest</button>
     </div>
   </div>
 
@@ -193,7 +194,8 @@
       saveState();
       render();
       // Persist externally per new trade
-      sendEvent('trade:add', { trade });
+      // Choose storage format if needed: 'json' (default) or 'txt'
+      sendEvent('trade:add', { trade, format: 'json' });
     }
 
     function removeTrade(id) {
@@ -310,6 +312,32 @@
         window.open(items[0].url, '_blank');
       } catch (e) {
         alert('Could not open saved files.');
+      }
+    });
+
+    document.getElementById('btnReadLatest').addEventListener('click', async () => {
+      try {
+        const list = await fetch('/api/list');
+        if (!list.ok) throw new Error('List failed');
+        const data = await list.json();
+        const items = Array.isArray(data.items) ? data.items : [];
+        if (items.length === 0) { alert('No saved files yet.'); return; }
+        const latestPath = items[0].path;
+        const fileResp = await fetch('/api/get?path=' + encodeURIComponent(latestPath));
+        if (!fileResp.ok) throw new Error('Get failed');
+        const fileData = await fileResp.json();
+        const txt = fileData?.content || '';
+        // Show in a simple modal-like window
+        const w = window.open('', '_blank');
+        if (w) {
+          w.document.write('<pre style="white-space:pre-wrap;word-wrap:break-word;padding:16px">' +
+            (txt ? txt.replace(/</g, '&lt;') : 'Empty file') + '</pre>');
+          w.document.close();
+        } else {
+          alert('Content:\n\n' + txt.slice(0, 2000));
+        }
+      } catch (e) {
+        alert('Could not read latest file.');
       }
     });
 
