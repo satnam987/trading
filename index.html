@@ -194,7 +194,8 @@
       render();
       // Persist externally per new trade
       // Choose storage format if needed: 'json' (default) or 'txt'
-      sendEvent('trade:add', { trade, format: 'json' });
+      // Best effort; ignore errors in UI
+      sendEvent('trade:add', { trade });
     }
 
     function removeTrade(id) {

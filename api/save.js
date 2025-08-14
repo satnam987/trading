@@ -5,7 +5,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const body = req.body || {};
+    let body = req.body || {};
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body); } catch (_) {}
+    }
 
     const owner = process.env.GITHUB_OWNER || 'satnam987';
     const repo = process.env.GITHUB_REPO || 'trading';
@@ -21,6 +24,10 @@ export default async function handler(req, res) {
     const y = now.getFullYear();
     const m = String(now.getMonth() + 1).padStart(2, '0');
     const trade = body?.payload?.trade || null;
+    if (!trade || typeof trade !== 'object') {
+      res.status(400).json({ ok: false, error: 'Missing trade payload' });
+      return;
+    }
     const filePath = `data/opslag.json`;
 
     const apiBase = 'https://api.github.com';
@@ -47,9 +54,7 @@ export default async function handler(req, res) {
     }
 
     // Append new trade record
-    if (trade && typeof trade === 'object') {
-      existingTrades.push({ ts: now.toISOString(), ...trade });
-    }
+    existingTrades.push({ ts: now.toISOString(), ...trade });
 
     const contentStr = JSON.stringify({ version: 1, updatedAt: now.toISOString(), trades: existingTrades }, null, 2);
     const b64 = Buffer.from(contentStr, 'utf8').toString('base64');
@@ -73,7 +78,7 @@ export default async function handler(req, res) {
 
     res.status(200).json({ ok: true });
   } catch (err) {
-    res.status(500).json({ ok: false, error: 'Unexpected error' });
+    res.status(500).json({ ok: false, error: 'Unexpected error', detail: String(err && err.message || err) });
   }
 }
 
