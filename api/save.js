@@ -21,17 +21,7 @@ export default async function handler(req, res) {
     const y = now.getFullYear();
     const m = String(now.getMonth() + 1).padStart(2, '0');
     const trade = body?.payload?.trade || null;
-    const idPart = trade?.id || Math.random().toString(36).slice(2);
-    const day = String(now.getDate()).padStart(2, '0');
-    const time = now.toISOString().replace(/[:.]/g, '-');
-    const dirPath = `data/trades/${y}/${m}`;
-    const filePath = `${dirPath}/${time}-${idPart}.json`;
-
-    const contentObject = {
-      ts: now.toISOString(),
-      event: body?.event || 'trade:add',
-      trade,
-    };
+    const filePath = `data/opslag.json`;
 
     const apiBase = 'https://api.github.com';
     const headers = {
@@ -40,15 +30,38 @@ export default async function handler(req, res) {
       Accept: 'application/vnd.github+json',
     };
 
-    const b64 = Buffer.from(JSON.stringify(contentObject, null, 2), 'utf8').toString('base64');
+    // Read current opslag.json (if exists)
+    let existingSha = null;
+    let existingTrades = [];
+    const getResp = await fetch(`${apiBase}/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath)}?ref=${encodeURIComponent(branch)}`, { headers });
+    if (getResp.ok) {
+      const json = await getResp.json();
+      existingSha = json.sha || null;
+      if (json.content && json.encoding === 'base64') {
+        try {
+          const curr = JSON.parse(Buffer.from(json.content, 'base64').toString('utf8'));
+          if (Array.isArray(curr?.trades)) existingTrades = curr.trades;
+          else if (Array.isArray(curr)) existingTrades = curr; // legacy: plain array
+        } catch (_) {}
+      }
+    }
+
+    // Append new trade record
+    if (trade && typeof trade === 'object') {
+      existingTrades.push({ ts: now.toISOString(), ...trade });
+    }
+
+    const contentStr = JSON.stringify({ version: 1, updatedAt: now.toISOString(), trades: existingTrades }, null, 2);
+    const b64 = Buffer.from(contentStr, 'utf8').toString('base64');
 
     const putResp = await fetch(`${apiBase}/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath)}`, {
       method: 'PUT',
       headers,
       body: JSON.stringify({
-        message: `chore(journal): create ${filePath}`,
+        message: existingSha ? `chore(journal): update ${filePath}` : `chore(journal): create ${filePath}`,
         content: b64,
         branch,
+        sha: existingSha || undefined,
       }),
     });
 

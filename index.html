@@ -143,8 +143,7 @@
     <div class="text-center">
       <button id="btnExportJson" class="btn btn-secondary me-2">Export JSON</button>
       <button id="btnExportCsv" class="btn btn-secondary me-2">Export CSV</button>
-      <button id="btnOpenFiles" class="btn btn-outline-primary">Open Saved Files</button>
-      <button id="btnReadLatest" class="btn btn-outline-secondary ms-2">Read Latest</button>
+      
     </div>
   </div>
 
@@ -298,60 +297,7 @@
       downloadBlob(header + rows, 'trading-journal.csv', 'text/csv');
     });
 
-    document.getElementById('btnOpenFiles').addEventListener('click', async () => {
-      try {
-        const resp = await fetch('/api/list');
-        if (!resp.ok) throw new Error('Failed to list files');
-        const data = await resp.json();
-        const items = Array.isArray(data.items) ? data.items : [];
-        if (items.length === 0) {
-          alert('No saved files found yet.');
-          return;
-        }
-        // Open the newest file in a new tab; or show a simple chooser
-        window.open(items[0].url, '_blank');
-      } catch (e) {
-        alert('Could not open saved files.');
-      }
-    });
-
-    document.getElementById('btnReadLatest').addEventListener('click', async () => {
-      try {
-        const list = await fetch('/api/list');
-        if (!list.ok) throw new Error('List failed');
-        const data = await list.json();
-        const items = Array.isArray(data.items) ? data.items : [];
-        if (items.length === 0) {
-          // Fallback: show local data if nothing saved remotely yet
-          const w = window.open('', '_blank');
-          const localJson = JSON.stringify({ trades }, null, 2);
-          if (w) {
-            w.document.write('<pre style="white-space:pre-wrap;word-wrap:break-word;padding:16px">' +
-              localJson.replace(/</g, '&lt;') + '</pre>');
-            w.document.close();
-          } else {
-            alert(localJson.slice(0, 2000));
-          }
-          return;
-        }
-        const latestPath = items[0].path;
-        const fileResp = await fetch('/api/get?path=' + encodeURIComponent(latestPath));
-        if (!fileResp.ok) throw new Error('Get failed');
-        const fileData = await fileResp.json();
-        const txt = fileData?.content || '';
-        // Show in a simple modal-like window
-        const w = window.open('', '_blank');
-        if (w) {
-          w.document.write('<pre style="white-space:pre-wrap;word-wrap:break-word;padding:16px">' +
-            (txt ? txt.replace(/</g, '&lt;') : 'Empty file') + '</pre>');
-          w.document.close();
-        } else {
-          alert('Content:\n\n' + txt.slice(0, 2000));
-        }
-      } catch (e) {
-        alert('Could not read latest file.');
-      }
-    });
+    
 
     function downloadBlob(content, filename, type) {
       const blob = new Blob([content], { type });
